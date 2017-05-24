@@ -163,22 +163,41 @@ int main(int argc, char **argv) {
  * when we type ctrl-c (ctrl-z) at the keyboard.
 */
 void eval(char *cmdline) {
-  int bg;
+  char *argv[MAXARGS];
+  char buf[MAXLINE];
+  int bg, bic;
   pid_t pid;
-  bg = parseline() //TODO:QUESTIONAR AYRES SOBRE ISSO
-  if(!builtin_cmd){
-    if((pid = fork()) == 0) {
-      if(execve(argv[0],argv,environ) < 0){
-        printf("%s: Command not found\n", argv[0]);
+  //sigset_t mask, prev;
+
+  strcpy(buf, cmdline);
+  bg = parseline(buf, argv);
+  if(argv[0] == NULL)
+    return;
+
+  bic = builtin_cmd(argv);
+  if(!bic){
+    //sigprogmask(SIG_BLOCK, &mask, &prev);
+    pid = fork();
+    if(pid == 0){
+      if(execve(argv[0], argv, environ) < 0){
+        printf("%s : Command Not Found\n", argv[0]);
         exit(0);
       }
-      if(!bg){
-        pid.state = FG;
-        waitfg(pid);
-      }else{
-        pid.state = BG;
-      }
     }
+
+    if(!bg){
+      if(!bic){
+        addjob(jobs, pid, FG, cmdline);
+      }
+      waitfg(pid);
+    }
+    else{
+      if(!bic){
+        addjob(jobs, pid, BG, cmdline);
+      }
+      printf("%d %s", pid, cmdline);
+    }
+
   }
   return;
 }
@@ -246,8 +265,10 @@ int builtin_cmd(char **argv) {
     exit(0);
   }else if(!strcmp(argv[0],"jobs")){
     listjobs(jobs);
+    return 1;
   } else if(!strcmp(argv[0],"fg") || !strcmp(argv[0],"bg")){
     do_bgfg(argv);
+    return 1;
   }
   return 0;     /* not a builtin command */
 }
@@ -305,10 +326,12 @@ void sigint_handler(int sig) {
  *     foreground job by sending it a SIGTSTP.
  */
 void sigtstp_handler(int sig) {
-  pid_t fgjob_id = fgpid(jobs);
-  if(fgjob_id != 0){
-    fgjob_id->state = ST;
-    kill(fgjob_id, sig);
+  pid_t fgjobpid = fgpid(jobs);
+  struct job_t *fgjob;
+  fgjob = getjobpid(jobs, fgjobpid);
+  if(fgjobpid != 0){
+    fgjob->state = ST;
+    kill(fgjobpid, sig);
   }
   return;
 }
