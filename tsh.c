@@ -284,10 +284,13 @@ void do_bgfg(char **argv) {
  * waitfg - Block until process pid is no longer the foreground process
  */
 void waitfg(pid_t pid) {
-  int status;
-  if(waitpid(pid, &status, 0) < 0){
-    unix_error("waitfg");
-  }
+  int state;
+  struct job_t *fgjob;
+  fgjob = getjobpid(jobs, pid);
+  do {
+    sleep(1);
+    state = fgjob->state;
+  } while(state == FG);
   return;
 }
 
@@ -303,6 +306,17 @@ void waitfg(pid_t pid) {
  *     currently running children to terminate.
  */
 void sigchld_handler(int sig) {
+  int olderrno = errno;
+
+  while (waitpid(-1, NULL, 0) > 0) {
+    pid_t fgjob_id = fgpid(jobs);
+    deletejob(jobs,fgjob_id);
+  }
+  if(errno != ECHILD){
+    unix_error("waitpid error");
+  }
+
+  errno = olderrno;
   return;
 }
 
@@ -326,12 +340,16 @@ void sigint_handler(int sig) {
  *     foreground job by sending it a SIGTSTP.
  */
 void sigtstp_handler(int sig) {
-  pid_t fgjobpid = fgpid(jobs);
-  struct job_t *fgjob;
-  fgjob = getjobpid(jobs, fgjobpid);
-  if(fgjobpid != 0){
+  pid_t fgjob_id = fgpid(jobs);
+  printf("%s\n", "hello1");
+  if(fgjob_id != 0){
+    printf("%s\n", "hello");
+    struct job_t *fgjob;
+    fgjob = getjobpid(jobs, fgjob_id);
+
     fgjob->state = ST;
-    kill(fgjobpid, sig);
+
+    kill(fgjob_id, sig);
   }
   return;
 }
